@@ -16,9 +16,6 @@ A Streamlit web application that helps users analyze food prices, view trends, p
 
 📱 Responsive Design - Works on desktop and mobile
 
-## Live Demo
-
-[https://food-price-predictor-kenya.streamlit.app](https://food-price-predictor-3e5qhnh2vqxjszdf8ta76a.streamlit.app/)
 
 🏗️ App Structure
 text
@@ -42,15 +39,9 @@ cd food-price-predictor-kenya
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
-Download Data
-Place the WFP Food Prices Kenya dataset as wfp_food_prices_ken.csv in the root or data/ folder.
+## Live Demo
 
-Run the App
-bash
-streamlit run app.py
-Open http://localhost:8501 in your browser.
+[https://food-price-predictor-kenya.streamlit.app](https://food-price-predictor-3e5qhnh2vqxjszdf8ta76a.streamlit.app/)
 
 📦 Requirements
 text
