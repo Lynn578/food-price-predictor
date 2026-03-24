@@ -2,7 +2,7 @@ Food Price Predictor - Kenya 🍽️
 
 Streamlit web app that tracks Kenyan food prices across markets, shows trends, predicts future prices, and gives smart shopping recommendations. Perfect for dealing with those crazy grocery price swings.
 
-🔴 Live Demo: https://food-price-predictor-kenya.streamlit.app
+🔴 Live Demo: https://food-price-predictor-3e5qhnh2vqxjszdf8ta76a.streamlit.app/
 
 ✨ What You'll Get
 📊 Current Prices - Latest prices by market/food + full history
