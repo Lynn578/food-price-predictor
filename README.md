@@ -11,7 +11,7 @@ A Streamlit web application that helps users analyze food prices, view trends, p
 
 ## Live Demo
 
-[https://food-price-predictor-kenya.streamlit.app](https://food-price-predictor-kenya.streamlit.app)
+[https://food-price-predictor-kenya.streamlit.app](https://food-price-predictor-3e5qhnh2vqxjszdf8ta76a.streamlit.app/)
 
 ## Installation
 
