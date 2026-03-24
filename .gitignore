@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+.venv/
+
+# Virtual Environment
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/
+
+# Models (if you add later)
+models/
+*.pkl
+*.joblib
+
+# Data files (if you want to exclude)
+# wfp_food_prices_ken.csv  # Uncomment if you want to exclude data file
