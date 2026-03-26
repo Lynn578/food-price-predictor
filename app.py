@@ -463,4 +463,4 @@ elif page == "💡 Buying Suggestions":
 
 # Footer
 st.markdown("---")
-st.caption("© 2024 Food Price Predictor | Data Source: WFP Food Prices Kenya")
+st.caption("© 2026 Food Price Predictor | Data Source: WFP Food Prices Kenya")
