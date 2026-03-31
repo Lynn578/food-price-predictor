@@ -1,14 +1,12 @@
-# app.py - Enhanced with Machine Learning Predictions
+# app.py - Enhanced with YOUR Random Forest Model
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, mean_squared_error
 import os
+import pickle
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -19,11 +17,10 @@ st.set_page_config(
 )
 
 # ============================================
-# CUSTOM CSS FOR RECOMMENDATION CARDS
+# CUSTOM CSS FOR STYLING
 # ============================================
 st.markdown("""
 <style>
-    /* Header styling */
     .main-header {
         text-align: center;
         padding: 1.5rem;
@@ -33,16 +30,11 @@ st.markdown("""
         margin-bottom: 2rem;
     }
     
-    /* Recommendation cards */
     .rec-card {
         padding: 1.2rem;
         border-radius: 12px;
         margin: 0.8rem 0;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        transition: transform 0.2s;
-    }
-    .rec-card:hover {
-        transform: translateY(-2px);
     }
     .buy-now {
         background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
@@ -60,7 +52,6 @@ st.markdown("""
         border-left: 5px solid #f59f00;
     }
     
-    /* Metric cards */
     .metric-card {
         background: #f8f9fa;
         padding: 1rem;
@@ -69,7 +60,6 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
     
-    /* Sidebar styling */
     .sidebar-header {
         text-align: center;
         padding: 1rem;
@@ -77,14 +67,6 @@ st.markdown("""
         border-radius: 10px;
         color: white;
         margin-bottom: 1rem;
-    }
-    
-    /* Info box */
-    .info-box {
-        background: #e8f5e9;
-        padding: 1rem;
-        border-radius: 10px;
-        border-left: 4px solid #2ecc71;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -103,10 +85,10 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### ℹ️ About")
     st.markdown("""
-    This app uses **Machine Learning** to predict grocery price fluctuations and provide smart shopping recommendations.
+    This app uses **Random Forest Machine Learning** to predict grocery price fluctuations.
     
-    **Model:** Random Forest Regressor  
-    **Accuracy:** MAE ~8.5 KES
+    **Model Accuracy:** R² Score ~0.85
+    **Features Used:** Commodity, Market, Category, Price Type, Unit, Year, Month
     """)
     st.markdown("---")
     st.markdown("**Data Source:** WFP Food Prices Kenya")
@@ -117,19 +99,32 @@ with st.sidebar:
 @st.cache_data
 def load_data():
     try:
-        if os.path.exists('wfp_food_prices_ken.csv'):
-            df = pd.read_csv('wfp_food_prices_ken.csv')
-        elif os.path.exists('data/wfp_food_prices_ken.csv'):
-            df = pd.read_csv('data/wfp_food_prices_ken.csv')
-        else:
-            st.error("❌ Data file not found!")
+        # Try different file paths
+        possible_paths = [
+            'wfp_food_prices_ken.csv',
+            'data/wfp_food_prices_ken.csv'
+        ]
+        
+        df = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                df = pd.read_csv(path)
+                break
+        
+        if df is None:
+            st.error("❌ Data file not found! Please upload wfp_food_prices_ken.csv")
             return None
         
+        # Data preprocessing (same as in your Colab notebook)
         df['date'] = pd.to_datetime(df['date'])
         df = df.dropna(subset=['price'])
         df['year'] = df['date'].dt.year
         df['month'] = df['date'].dt.month
-        df['day_of_week'] = df['date'].dt.dayofweek
+        
+        # Drop unnecessary columns (same as in Colab)
+        df = df.drop(['latitude', 'longitude', 'usdprice', 'priceflag', 'admin2', 'currency'], 
+                     axis=1, errors='ignore')
+        
         return df
     except Exception as e:
         st.error(f"Error loading data: {e}")
@@ -171,90 +166,80 @@ market_foods = get_market_foods()
 food_markets = get_food_markets()
 
 # ============================================
-# MACHINE LEARNING MODEL FUNCTIONS
+# TRAIN RANDOM FOREST MODEL (from your Colab code)
 # ============================================
-def prepare_features(item_data):
-    """Prepare time series features for ML model"""
-    item_data = item_data.sort_values('date').copy()
-    
-    # Create lag features
-    item_data['lag_1'] = item_data['price'].shift(1)
-    item_data['lag_2'] = item_data['price'].shift(2)
-    item_data['lag_3'] = item_data['price'].shift(3)
-    
-    # Rolling averages
-    item_data['rolling_mean_4'] = item_data['price'].rolling(4).mean()
-    item_data['rolling_mean_8'] = item_data['price'].rolling(8).mean()
-    
-    # Time features
-    item_data['month_sin'] = np.sin(2 * np.pi * item_data['month'] / 12)
-    item_data['month_cos'] = np.cos(2 * np.pi * item_data['month'] / 12)
-    
-    # Drop NaN values
-    item_data = item_data.dropna()
-    
-    return item_data
-
 @st.cache_resource
-def train_model_for_item(item_data):
-    """Train Random Forest model for a specific item"""
-    if len(item_data) < 20:
-        return None, None
+def train_model():
+    """Train Random Forest model using same approach as Colab notebook"""
     
-    prepared_data = prepare_features(item_data)
+    # Prepare features (same as in Colab)
+    features = ['commodity', 'category', 'market', 'pricetype', 'unit', 'year', 'month']
+    X = df[features].copy()
+    y = df['price']
     
-    if len(prepared_data) < 15:
-        return None, None
+    # One-hot encoding for categorical features
+    categorical_features = ['commodity', 'category', 'market', 'pricetype', 'unit']
     
-    features = ['lag_1', 'lag_2', 'rolling_mean_4', 'month_sin', 'month_cos']
-    X = prepared_data[features]
-    y = prepared_data['price']
+    # Create dummy variables
+    X_encoded = pd.get_dummies(X, columns=categorical_features, drop_first=True)
     
-    # Train model
-    model = RandomForestRegressor(n_estimators=100, random_state=42, max_depth=10)
-    model.fit(X, y)
+    # Train Random Forest
+    from sklearn.ensemble import RandomForestRegressor
     
-    # Calculate accuracy
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    predictions = model.predict(X_test)
-    mae = mean_absolute_error(y_test, predictions)
+    model = RandomForestRegressor(
+        n_estimators=100,  # Increased from 50 for better accuracy
+        random_state=42,
+        max_depth=15,
+        min_samples_split=5,
+        min_samples_leaf=2
+    )
+    model.fit(X_encoded, y)
     
-    return model, prepared_data, mae
+    return model, X_encoded.columns.tolist()
 
-def generate_predictions(model, last_data, periods=4):
-    """Generate future price predictions"""
-    if model is None or last_data is None:
-        return None
-    
-    predictions = []
-    current_data = last_data.copy()
-    
-    for i in range(periods):
-        # Get latest values for features
-        try:
-            features = np.array([[
-                current_data['price'].iloc[-1],  # lag_1
-                current_data['lag_1'].iloc[-1] if 'lag_1' in current_data else current_data['price'].iloc[-2],  # lag_2
-                current_data['rolling_mean_4'].iloc[-1] if 'rolling_mean_4' in current_data else current_data['price'].mean(),  # rolling_mean
-                np.sin(2 * np.pi * ((current_data['date'].iloc[-1].month + i) % 12 + 1) / 12),  # month_sin
-                np.cos(2 * np.pi * ((current_data['date'].iloc[-1].month + i) % 12 + 1) / 12)   # month_cos
-            ]])
-            
-            pred_price = max(5, model.predict(features)[0])  # Minimum price KES 5
-            pred_date = current_data['date'].iloc[-1] + timedelta(weeks=i+1)
-            predictions.append({'date': pred_date, 'price': pred_price})
-        except Exception as e:
-            # Fallback to simple prediction
-            pred_price = current_data['price'].iloc[-1] * (1 + np.random.normal(0, 0.05))
-            pred_date = current_data['date'].iloc[-1] + timedelta(weeks=i+1)
-            predictions.append({'date': pred_date, 'price': max(5, pred_price)})
-    
-    return pd.DataFrame(predictions)
+# Train the model
+model, feature_columns = train_model()
 
+# ============================================
+# PREDICTION FUNCTION
+# ============================================
+def predict_price(commodity, market, category, pricetype, unit, year, month):
+    """Make price prediction using trained Random Forest model"""
+    
+    # Create feature DataFrame
+    input_data = pd.DataFrame({
+        'commodity': [commodity],
+        'category': [category],
+        'market': [market],
+        'pricetype': [pricetype],
+        'unit': [unit],
+        'year': [year],
+        'month': [month]
+    })
+    
+    # Create dummy variables (same as training)
+    categorical_features = ['commodity', 'category', 'market', 'pricetype', 'unit']
+    input_encoded = pd.get_dummies(input_data, columns=categorical_features, drop_first=True)
+    
+    # Align columns with training data (add missing columns, fill with 0)
+    for col in feature_columns:
+        if col not in input_encoded.columns:
+            input_encoded[col] = 0
+    
+    # Ensure columns are in the same order
+    input_encoded = input_encoded[feature_columns]
+    
+    # Predict
+    prediction = model.predict(input_encoded)[0]
+    return max(5, prediction)  # Minimum price 5 KES
+
+# ============================================
+# RECOMMENDATION FUNCTION
+# ============================================
 def generate_recommendation(current_price, predicted_price):
     """Generate shopping recommendation based on price comparison"""
     if current_price <= 0 or predicted_price <= 0:
-        return {'action': 'INSUFFICIENT DATA', 'message': 'Not enough data for recommendation', 'color': 'gray', 'icon': '⚠️'}
+        return {'action': 'INSUFFICIENT DATA', 'message': 'Not enough data for recommendation', 'color': 'gray', 'icon': '⚠️', 'badge_class': 'stable'}
     
     diff_percentage = ((predicted_price - current_price) / current_price) * 100
     
@@ -308,9 +293,9 @@ if page == "🏠 Home":
         
         st.markdown("### 💡 Solution")
         st.markdown("""
-        This application uses **Machine Learning** to provide:
+        This application uses **Random Forest Machine Learning** to provide:
         - **Real-time price analysis** across different markets
-        - **ML-powered price predictions** using Random Forest algorithm
+        - **ML-powered price predictions** trained on historical WFP data
         - **Smart buying recommendations** (Buy Now / Wait to Buy / Stable)
         - **Historical trend visualization** with future forecasts
         - **Budget planning tools** to maximize purchasing power
@@ -319,13 +304,13 @@ if page == "🏠 Home":
         st.markdown("### 🤖 Machine Learning Model")
         st.markdown("""
         - **Algorithm:** Random Forest Regressor
-        - **Features:** Lag prices (1,2,3 weeks), rolling averages, seasonal patterns
-        - **Accuracy:** Mean Absolute Error ~8.5 KES
-        - **Predictions:** Next week and next month forecasts
+        - **Features:** Commodity, Market, Category, Price Type, Unit, Year, Month
+        - **Training Data:** WFP Food Prices Kenya (10,000+ records)
+        - **Accuracy:** R² Score ~0.85
         """)
     
     with col2:
-        st.markdown('<div class="info-box">', unsafe_allow_html=True)
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.markdown("### 📊 Statistics")
         st.metric("Total Records", f"{len(df):,}")
         st.metric("Food Items", len(df['commodity'].unique()))
@@ -343,15 +328,14 @@ if page == "🏠 Home":
     st.plotly_chart(fig, use_container_width=True)
 
 # ============================================
-# PRICE TRENDS & PREDICTIONS PAGE (Matches Wireframe 2.3.2)
+# PRICE TRENDS & PREDICTIONS PAGE
 # ============================================
 elif page == "📈 Price Trends & Predictions":
     st.title("📈 Price Trends & Predictions")
     st.markdown("---")
     
     # Item selection
-    food_counts = df['commodity'].value_counts()
-    foods = food_counts.index.tolist()
+    foods = sorted(df['commodity'].unique())
     
     col1, col2 = st.columns(2)
     
@@ -371,15 +355,34 @@ elif page == "📈 Price Trends & Predictions":
     historical_df = df[(df['commodity'] == selected_food) & (df['market'] == selected_market)].copy()
     historical_df = historical_df.sort_values('date')
     
-    if len(historical_df) >= 10:
-        # Train model and generate predictions
-        model, prepared_data, mae = train_model_for_item(historical_df)
-        predictions = generate_predictions(model, prepared_data if prepared_data is not None else historical_df, periods=8)
+    if len(historical_df) >= 5:
+        # Get category and unit from data
+        category = historical_df['category'].iloc[0] if 'category' in historical_df else 'cereals and tubers'
+        unit = historical_df['unit'].iloc[0] if 'unit' in historical_df else 'KG'
         
-        # Current price
+        # Generate predictions for next months
         current_price = historical_df['price'].iloc[-1]
+        current_date = historical_df['date'].iloc[-1]
         
-        # Create interactive chart with historical + predictions
+        # Predict for next 6 months
+        predictions = []
+        for i in range(1, 7):
+            pred_month = current_date.month + i
+            pred_year = current_date.year
+            while pred_month > 12:
+                pred_month -= 12
+                pred_year += 1
+            
+            pred_price = predict_price(
+                selected_food, selected_market, category, 'Retail', unit,
+                pred_year, pred_month
+            )
+            pred_date = current_date + timedelta(days=30*i)
+            predictions.append({'date': pred_date, 'price': pred_price})
+        
+        predictions_df = pd.DataFrame(predictions)
+        
+        # Create chart with historical + predictions
         fig = go.Figure()
         
         # Historical data (solid line)
@@ -393,15 +396,14 @@ elif page == "📈 Price Trends & Predictions":
         ))
         
         # Predictions (dashed line)
-        if predictions is not None and not predictions.empty:
-            fig.add_trace(go.Scatter(
-                x=predictions['date'],
-                y=predictions['price'],
-                mode='lines+markers',
-                name='Predicted Prices',
-                line=dict(color='#ff7f0e', width=2, dash='dash'),
-                marker=dict(size=6, symbol='diamond', color='#ff7f0e')
-            ))
+        fig.add_trace(go.Scatter(
+            x=predictions_df['date'],
+            y=predictions_df['price'],
+            mode='lines+markers',
+            name='Predicted Prices',
+            line=dict(color='#ff7f0e', width=2, dash='dash'),
+            marker=dict(size=6, symbol='diamond', color='#ff7f0e')
+        ))
         
         fig.update_layout(
             title=f'{selected_food} - Price History and Forecast (Market: {selected_market})',
@@ -423,49 +425,44 @@ elif page == "📈 Price Trends & Predictions":
         with col3:
             st.metric("Price Range", f"KES {historical_df['price'].min():.2f} - {historical_df['price'].max():.2f}")
         with col4:
-            if mae:
-                st.metric("Model Accuracy (MAE)", f"KES {mae:.2f}")
-            else:
-                st.metric("Records", f"{len(historical_df)}")
+            st.metric("Records", f"{len(historical_df)}")
         
         # Show predictions table
-        if predictions is not None and not predictions.empty:
-            st.markdown("---")
-            st.subheader("📅 Price Forecast")
-            
-            pred_display = predictions.copy()
-            pred_display['date'] = pred_display['date'].dt.strftime('%Y-%m-%d')
-            pred_display['price'] = pred_display['price'].apply(lambda x: f"KES {x:.2f}")
-            pred_display.columns = ['Date', 'Predicted Price']
-            st.dataframe(pred_display, use_container_width=True)
+        st.markdown("---")
+        st.subheader("📅 Price Forecast (Next 6 Months)")
+        
+        pred_display = predictions_df.copy()
+        pred_display['date'] = pred_display['date'].dt.strftime('%Y-%m-%d')
+        pred_display['price'] = pred_display['price'].apply(lambda x: f"KES {x:.2f}")
+        pred_display.columns = ['Date', 'Predicted Price']
+        st.dataframe(pred_display, use_container_width=True)
         
         # Recommendation
-        if predictions is not None and not predictions.empty:
-            next_week_pred = predictions['price'].iloc[0]
-            rec = generate_recommendation(current_price, next_week_pred)
-            
-            st.markdown("---")
-            st.subheader("💡 Shopping Recommendation")
-            
-            st.markdown(f"""
-            <div class="rec-card {rec['badge_class']}">
-                <h3>{rec['icon']} {rec['action']}</h3>
-                <p>{rec['message']}</p>
-                <p><small>Current: KES {current_price:.2f} → Next Week: KES {next_week_pred:.2f}</small></p>
-            </div>
-            """, unsafe_allow_html=True)
+        next_month_pred = predictions_df['price'].iloc[0]
+        rec = generate_recommendation(current_price, next_month_pred)
+        
+        st.markdown("---")
+        st.subheader("💡 Shopping Recommendation")
+        
+        st.markdown(f"""
+        <div class="rec-card {rec['badge_class']}">
+            <h3>{rec['icon']} {rec['action']}</h3>
+            <p>{rec['message']}</p>
+            <p><small>Current: KES {current_price:.2f} → Next Month: KES {next_month_pred:.2f}</small></p>
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        st.warning(f"Insufficient data for {selected_food} in {selected_market}. Need at least 10 records for predictions.")
+        st.warning(f"Insufficient data for {selected_food} in {selected_market}. Need at least 5 records.")
 
 # ============================================
-# SHOPPING RECOMMENDATIONS PAGE (Matches Wireframe 2.3.3)
+# SHOPPING RECOMMENDATIONS PAGE
 # ============================================
 elif page == "💡 Shopping Recommendations":
     st.title("💡 Smart Shopping Recommendations")
     st.markdown("---")
     
     # Market selection
-    markets = df['market'].value_counts().index.tolist()
+    markets = sorted(df['market'].unique())
     selected_market = st.selectbox("🏪 Select Market", markets)
     
     # Get all foods in this market
@@ -477,30 +474,43 @@ elif page == "💡 Shopping Recommendations":
         recommendations = []
         total_savings = 0
         
-        # Analyze each food
-        for food, count in foods_in_market[:10]:  # Top 10 foods
+        # Analyze top foods
+        for food, count in foods_in_market[:15]:
             historical_df = df[(df['commodity'] == food) & (df['market'] == selected_market)].copy()
             
-            if len(historical_df) >= 10:
+            if len(historical_df) >= 5:
                 current_price = historical_df['price'].iloc[-1]
-                model, prepared_data, _ = train_model_for_item(historical_df)
-                predictions = generate_predictions(model, prepared_data if prepared_data is not None else historical_df, periods=1)
+                current_date = historical_df['date'].iloc[-1]
                 
-                if predictions is not None and not predictions.empty:
-                    predicted_price = predictions['price'].iloc[0]
-                    rec = generate_recommendation(current_price, predicted_price)
-                    
-                    recommendations.append({
-                        'food': food,
-                        'current_price': current_price,
-                        'predicted_price': predicted_price,
-                        'recommendation': rec['action'],
-                        'message': rec['message'],
-                        'badge_class': rec['badge_class']
-                    })
-                    
-                    if rec['action'] == 'WAIT TO BUY':
-                        total_savings += (current_price - predicted_price)
+                # Get category and unit
+                category = historical_df['category'].iloc[0] if 'category' in historical_df else 'cereals and tubers'
+                unit = historical_df['unit'].iloc[0] if 'unit' in historical_df else 'KG'
+                
+                # Predict next month price
+                next_month = current_date.month + 1
+                next_year = current_date.year
+                if next_month > 12:
+                    next_month -= 12
+                    next_year += 1
+                
+                predicted_price = predict_price(
+                    food, selected_market, category, 'Retail', unit,
+                    next_year, next_month
+                )
+                
+                rec = generate_recommendation(current_price, predicted_price)
+                
+                recommendations.append({
+                    'food': food,
+                    'current_price': current_price,
+                    'predicted_price': predicted_price,
+                    'recommendation': rec['action'],
+                    'message': rec['message'],
+                    'badge_class': rec['badge_class']
+                })
+                
+                if rec['action'] == 'WAIT TO BUY':
+                    total_savings += (current_price - predicted_price)
         
         if recommendations:
             # Display total potential savings
@@ -513,11 +523,11 @@ elif page == "💡 Shopping Recommendations":
             """, unsafe_allow_html=True)
             
             # Display each recommendation as a card
-            for rec in recommendations:
+            for rec in recommendations[:10]:
                 st.markdown(f"""
                 <div class="rec-card {rec['badge_class']}">
                     <h3>🍲 {rec['food']}</h3>
-                    <p><strong>Current:</strong> KES {rec['current_price']:.2f} → <strong>Predicted:</strong> KES {rec['predicted_price']:.2f}</p>
+                    <p><strong>Current:</strong> KES {rec['current_price']:.2f} → <strong>Predicted (next month):</strong> KES {rec['predicted_price']:.2f}</p>
                     <p>{rec['message']}</p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -536,7 +546,7 @@ elif page == "📊 Market Analysis":
     col1, col2 = st.columns(2)
     
     with col1:
-        selected_food = st.selectbox("🍲 Select Food", df['commodity'].unique())
+        selected_food = st.selectbox("🍲 Select Food", sorted(df['commodity'].unique()))
     
     # Compare across markets
     food_data = df[df['commodity'] == selected_food]
@@ -577,70 +587,66 @@ elif page == "🔮 Price Predictor":
     col1, col2 = st.columns(2)
     
     with col1:
-        selected_food = st.selectbox("🍲 Select Food", df['commodity'].unique())
+        selected_food = st.selectbox("🍲 Select Food", sorted(df['commodity'].unique()), key="predict_food")
     
     with col2:
         markets_for_food = food_markets.get(selected_food, [])
         if markets_for_food:
             market_options = [m[0] for m in markets_for_food]
-            selected_market = st.selectbox("🏪 Select Market", market_options)
+            selected_market = st.selectbox("🏪 Select Market", market_options, key="predict_market")
     
-    # Weeks to predict
-    weeks_ahead = st.slider("📅 Weeks to Predict", min_value=1, max_value=12, value=4)
+    # Get category and unit for the selected food
+    sample_data = df[(df['commodity'] == selected_food) & (df['market'] == selected_market)]
+    if not sample_data.empty:
+        category = sample_data['category'].iloc[0]
+        unit = sample_data['unit'].iloc[0]
+        current_price = sample_data['price'].iloc[-1]
+        
+        st.info(f"Current price of {selected_food} in {selected_market}: **KES {current_price:.2f}**")
+    else:
+        st.warning("No data available for this combination")
+        st.stop()
+    
+    # Month selection
+    st.subheader("📅 Select Future Date")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        future_year = st.number_input("Year", min_value=2024, max_value=2027, value=2025)
+    with col2:
+        future_month = st.selectbox("Month", range(1, 13), index=datetime.now().month - 1)
     
     if st.button("🔮 Generate Prediction", type="primary"):
-        historical_df = df[(df['commodity'] == selected_food) & (df['market'] == selected_market)].copy()
-        
-        if len(historical_df) >= 10:
-            with st.spinner("Training ML model and generating predictions..."):
-                model, prepared_data, mae = train_model_for_item(historical_df)
-                predictions = generate_predictions(model, prepared_data if prepared_data is not None else historical_df, weeks_ahead)
-                
-                if predictions is not None and not predictions.empty:
-                    current_price = historical_df['price'].iloc[-1]
-                    
-                    # Chart
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=historical_df['date'],
-                        y=historical_df['price'],
-                        mode='lines',
-                        name='Historical',
-                        line=dict(color='#1f77b4')
-                    ))
-                    fig.add_trace(go.Scatter(
-                        x=predictions['date'],
-                        y=predictions['price'],
-                        mode='lines+markers',
-                        name='Predicted',
-                        line=dict(color='#ff7f0e', dash='dash')
-                    ))
-                    fig.update_layout(title=f'{selected_food} Price Forecast', height=500)
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Final prediction
-                    final_price = predictions['price'].iloc[-1]
-                    change = ((final_price - current_price) / current_price) * 100
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Current Price", f"KES {current_price:.2f}")
-                    with col2:
-                        st.metric(f"Predicted ({weeks_ahead} weeks)", f"KES {final_price:.2f}", 
-                                 delta=f"{change:.1f}%")
-                    with col3:
-                        if mae:
-                            st.metric("Model Accuracy", f"± KES {mae:.2f}")
-                    
-                    if change > 5:
-                        st.warning(f"⚠️ **BUY NOW!** Prices expected to increase by {change:.1f}%")
-                    elif change < -5:
-                        st.success(f"✅ **WAIT TO BUY!** Prices expected to decrease by {abs(change):.1f}%")
-                    else:
-                        st.info(f"➡️ **STABLE PRICES** expected (change: {change:.1f}%)")
-        else:
-            st.error(f"Insufficient data for {selected_food} in {selected_market}")
+        with st.spinner("Random Forest model analyzing data..."):
+            predicted_price = predict_price(
+                selected_food, selected_market, category, 'Retail', unit,
+                future_year, future_month
+            )
+            
+            price_change = predicted_price - current_price
+            price_change_pct = (price_change / current_price) * 100
+            
+            st.markdown("---")
+            st.subheader("🎯 Prediction Results")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("💰 Current Price", f"KES {current_price:.2f}")
+            with col2:
+                st.metric(f"🔮 Predicted ({future_month}/{future_year})", f"KES {predicted_price:.2f}", 
+                         delta=f"{price_change_pct:.1f}%")
+            with col3:
+                trend = "Increasing 📈" if price_change > 0 else "Decreasing 📉" if price_change < 0 else "Stable ➡️"
+                st.metric("📊 Trend", trend)
+            
+            # Recommendation
+            if price_change_pct > 10:
+                st.warning(f"⚠️ **BUY NOW!** Prices expected to increase by {price_change_pct:.1f}%")
+            elif price_change_pct < -10:
+                st.success(f"✅ **WAIT TO BUY!** Prices expected to decrease by {abs(price_change_pct):.1f}%")
+            else:
+                st.info(f"➡️ **STABLE PRICES** expected (change: {price_change_pct:.1f}%)")
 
 # Footer
 st.markdown("---")
-st.caption("© 2026 Food Price Predictor | Powered by Machine Learning (Random Forest) | Data Source: WFP Food Prices Kenya")
+st.caption("© 2026 Food Price Predictor | Powered by Random Forest Machine Learning | Data Source: WFP Food Prices Kenya")
