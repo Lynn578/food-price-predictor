@@ -69,11 +69,20 @@ st.markdown("""
         margin-bottom: 1rem;
     }
     
-    .price-type-selector {
-        background: #f0f2f6;
-        padding: 0.8rem;
+    .warning-card {
+        background: #fff3cd;
+        border-left: 5px solid #ffc107;
+        padding: 1rem;
         border-radius: 10px;
-        margin: 0.5rem 0;
+        margin: 1rem 0;
+    }
+    
+    .info-card {
+        background: #d1ecf1;
+        border-left: 5px solid #17a2b8;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -168,6 +177,21 @@ def get_food_markets():
             markets.append((market, record_count))
         food_markets[food] = sorted(markets, key=lambda x: x[1], reverse=True)
     return food_markets
+
+@st.cache_data
+def get_available_price_types(food, market):
+    """Get available price types for a specific food and market"""
+    data = df[(df['commodity'] == food) & (df['market'] == market)]
+    if not data.empty:
+        return data['pricetype'].unique().tolist()
+    return []
+
+@st.cache_data
+def get_record_count(food, market, pricetype):
+    """Get number of records for a specific combination"""
+    return len(df[(df['commodity'] == food) & 
+                  (df['market'] == market) & 
+                  (df['pricetype'] == pricetype)])
 
 market_foods = get_market_foods()
 food_markets = get_food_markets()
@@ -330,7 +354,7 @@ if page == "🏠 Home":
         st.markdown("### 💰 Price Types Available")
         price_type_counts = df['pricetype'].value_counts()
         for pt, count in price_type_counts.items():
-            st.write(f"- **{pt}:** {count} records")
+            st.write(f"- **{pt}:** {count:,} records")
         st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
@@ -366,14 +390,22 @@ elif page == "📈 Price Trends & Predictions":
             st.stop()
     
     with col3:
-        # Price type selection - clearly visible
-        price_types = sorted(df['pricetype'].unique())
-        selected_pricetype = st.selectbox(
-            "💰 Select Price Type",
-            price_types,
-            help="Retail: Prices for individual consumers | Wholesale: Prices for bulk purchases"
-        )
-        st.caption(f"Showing {selected_pricetype} prices")
+        # Get available price types for this combination
+        available_price_types = get_available_price_types(selected_food, selected_market)
+        
+        if available_price_types:
+            selected_pricetype = st.selectbox(
+                "💰 Select Price Type",
+                available_price_types,
+                help="Retail: Prices for individual consumers | Wholesale: Prices for bulk purchases"
+            )
+        else:
+            st.error(f"No price data available for {selected_food} in {selected_market}")
+            st.stop()
+        
+        # Show record count
+        record_count = get_record_count(selected_food, selected_market, selected_pricetype)
+        st.caption(f"📊 {record_count} records available for this combination")
     
     # Get historical data with selected price type
     historical_df = df[(df['commodity'] == selected_food) & 
@@ -381,7 +413,10 @@ elif page == "📈 Price Trends & Predictions":
                        (df['pricetype'] == selected_pricetype)].copy()
     historical_df = historical_df.sort_values('date')
     
-    if len(historical_df) >= 5:
+    # Check if enough data
+    MIN_RECORDS = 5
+    
+    if len(historical_df) >= MIN_RECORDS:
         # Get category and unit from data
         category = historical_df['category'].iloc[0] if 'category' in historical_df else 'cereals and tubers'
         unit = historical_df['unit'].iloc[0] if 'unit' in historical_df else 'KG'
@@ -478,7 +513,38 @@ elif page == "📈 Price Trends & Predictions":
         </div>
         """, unsafe_allow_html=True)
     else:
-        st.warning(f"Insufficient data for {selected_food} in {selected_market} with {selected_pricetype} price type. Need at least 5 records.")
+        # Show helpful message with alternatives
+        st.markdown(f"""
+        <div class="warning-card">
+            <h3>⚠️ Insufficient Data</h3>
+            <p>Only <strong>{len(historical_df)}</strong> records available for <strong>{selected_food}</strong> in <strong>{selected_market}</strong> with <strong>{selected_pricetype}</strong> price type.</p>
+            <p>Need at least <strong>{MIN_RECORDS}</strong> records to make reliable predictions.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Show available alternatives
+        st.markdown("### 💡 Try These Alternatives:")
+        
+        # Check other price types for same food-market
+        other_price_types = [pt for pt in available_price_types if pt != selected_pricetype]
+        if other_price_types:
+            st.markdown("**Other price types for this food and market:**")
+            for pt in other_price_types:
+                pt_count = get_record_count(selected_food, selected_market, pt)
+                st.markdown(f"- **{pt}**: {pt_count} records available")
+        
+        # Show other markets for this food
+        st.markdown("**Other markets that sell this food:**")
+        other_markets = [m[0] for m in food_markets.get(selected_food, [])[:5]]
+        for market in other_markets[:5]:
+            if market != selected_market:
+                for pt in available_price_types:
+                    count = get_record_count(selected_food, market, pt)
+                    if count >= MIN_RECORDS:
+                        st.markdown(f"- **{market}** ({pt}): {count} records")
+                        break
+                else:
+                    st.markdown(f"- **{market}**: Limited data")
 
 # ============================================
 # SHOPPING RECOMMENDATIONS PAGE
@@ -495,11 +561,13 @@ elif page == "💡 Shopping Recommendations":
         selected_market = st.selectbox("🏪 Select Market", markets)
     
     with col2:
-        # Price type selection - clearly visible
-        price_types = sorted(df['pricetype'].unique())
+        # Get all price types available in this market
+        market_data = df[df['market'] == selected_market]
+        available_price_types = sorted(market_data['pricetype'].unique())
+        
         selected_pricetype = st.selectbox(
             "💰 Select Price Type",
-            price_types,
+            available_price_types,
             help="Retail: Prices for individual consumers | Wholesale: Prices for bulk purchases"
         )
         st.caption(f"Showing {selected_pricetype} prices")
@@ -513,6 +581,9 @@ elif page == "💡 Shopping Recommendations":
         
         recommendations = []
         total_savings = 0
+        insufficient_data = []
+        
+        MIN_RECORDS = 5
         
         # Analyze top foods
         for food in foods_in_market[:15]:
@@ -520,7 +591,7 @@ elif page == "💡 Shopping Recommendations":
                                (df['market'] == selected_market) &
                                (df['pricetype'] == selected_pricetype)].copy()
             
-            if len(historical_df) >= 5:
+            if len(historical_df) >= MIN_RECORDS:
                 current_price = historical_df['price'].iloc[-1]
                 current_date = historical_df['date'].iloc[-1]
                 
@@ -548,11 +619,14 @@ elif page == "💡 Shopping Recommendations":
                     'predicted_price': predicted_price,
                     'recommendation': rec['action'],
                     'message': rec['message'],
-                    'badge_class': rec['badge_class']
+                    'badge_class': rec['badge_class'],
+                    'records': len(historical_df)
                 })
                 
                 if rec['action'] == 'WAIT TO BUY':
                     total_savings += (current_price - predicted_price)
+            else:
+                insufficient_data.append((food, len(historical_df)))
         
         if recommendations:
             # Display total potential savings
@@ -571,10 +645,14 @@ elif page == "💡 Shopping Recommendations":
                     <h3>🍲 {rec['food']}</h3>
                     <p><strong>Current {selected_pricetype} price:</strong> KES {rec['current_price']:.2f} → <strong>Predicted (next month):</strong> KES {rec['predicted_price']:.2f}</p>
                     <p>{rec['message']}</p>
+                    <p><small>📊 Based on {rec['records']} historical records</small></p>
                 </div>
                 """, unsafe_allow_html=True)
-        else:
-            st.info("Not enough data to generate recommendations for this market and price type.")
+        
+        if insufficient_data:
+            with st.expander("ℹ️ Items with Insufficient Data (Need at least 5 records)"):
+                for food, count in insufficient_data:
+                    st.write(f"- **{food}**: Only {count} record(s) available")
     else:
         st.warning(f"No foods found in {selected_market} with {selected_pricetype} price type.")
 
@@ -591,7 +669,7 @@ elif page == "📊 Market Analysis":
         selected_food = st.selectbox("🍲 Select Food", sorted(df['commodity'].unique()))
     
     with col2:
-        # Price type selection - clearly visible
+        # Price type selection
         price_types = sorted(df['pricetype'].unique())
         selected_pricetype = st.selectbox(
             "💰 Select Price Type",
@@ -604,30 +682,38 @@ elif page == "📊 Market Analysis":
     food_data = df[(df['commodity'] == selected_food) & (df['pricetype'] == selected_pricetype)]
     
     if not food_data.empty:
-        # Market comparison chart
-        market_avg = food_data.groupby('market')['price'].mean().sort_values()
+        # Show markets with sufficient data
+        market_counts = food_data.groupby('market').size()
+        sufficient_markets = market_counts[market_counts >= 5].index.tolist()
         
-        fig = px.bar(x=market_avg.values, y=market_avg.index, orientation='h',
-                     title=f'Average {selected_pricetype} Price of {selected_food} Across Markets',
-                     labels={'x': f'Average {selected_pricetype} Price (KES)', 'y': 'Market'})
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Find cheapest market
-        cheapest_market = market_avg.idxmin()
-        cheapest_price = market_avg.min()
-        st.success(f"💡 **Best Deal:** {selected_food} is cheapest at **{cheapest_market}** (KES {cheapest_price:.2f}) for {selected_pricetype} price")
-        
-        # Time series comparison for top markets
-        st.subheader("📈 Price Trends Comparison")
-        top_markets = market_avg.head(5).index.tolist()
-        
-        comparison_df = food_data[food_data['market'].isin(top_markets)]
-        
-        fig2 = px.line(comparison_df, x='date', y='price', color='market',
-                       title=f'{selected_pricetype} Price Trends for {selected_food} - Market Comparison')
-        fig2.update_layout(height=400)
-        st.plotly_chart(fig2, use_container_width=True)
+        if len(sufficient_markets) == 0:
+            st.warning(f"No markets have at least 5 records for {selected_food} with {selected_pricetype} price type.")
+        else:
+            # Filter to markets with sufficient data
+            food_data_filtered = food_data[food_data['market'].isin(sufficient_markets)]
+            market_avg = food_data_filtered.groupby('market')['price'].mean().sort_values()
+            
+            fig = px.bar(x=market_avg.values, y=market_avg.index, orientation='h',
+                         title=f'Average {selected_pricetype} Price of {selected_food} Across Markets',
+                         labels={'x': f'Average {selected_pricetype} Price (KES)', 'y': 'Market'})
+            fig.update_layout(height=400)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Find cheapest market
+            cheapest_market = market_avg.idxmin()
+            cheapest_price = market_avg.min()
+            st.success(f"💡 **Best Deal:** {selected_food} is cheapest at **{cheapest_market}** (KES {cheapest_price:.2f}) for {selected_pricetype} price")
+            
+            # Time series comparison for top markets
+            st.subheader("📈 Price Trends Comparison")
+            top_markets = market_avg.head(5).index.tolist()
+            
+            comparison_df = food_data[food_data['market'].isin(top_markets)]
+            
+            fig2 = px.line(comparison_df, x='date', y='price', color='market',
+                           title=f'{selected_pricetype} Price Trends for {selected_food} - Market Comparison')
+            fig2.update_layout(height=400)
+            st.plotly_chart(fig2, use_container_width=True)
     else:
         st.warning(f"No data available for {selected_food} with {selected_pricetype} price type.")
 
@@ -650,72 +736,106 @@ elif page == "🔮 Price Predictor":
             selected_market = st.selectbox("🏪 Select Market", market_options, key="predict_market")
     
     with col3:
-        # Price type selection - clearly visible
-        price_types = sorted(df['pricetype'].unique())
-        selected_pricetype = st.selectbox(
-            "💰 Select Price Type",
-            price_types,
-            key="predict_pricetype",
-            help="Retail: Prices for individual consumers | Wholesale: Prices for bulk purchases"
-        )
-        st.caption(f"Predicting {selected_pricetype} prices")
+        # Get available price types for this combination
+        available_price_types = get_available_price_types(selected_food, selected_market)
+        
+        if available_price_types:
+            selected_pricetype = st.selectbox(
+                "💰 Select Price Type",
+                available_price_types,
+                key="predict_pricetype",
+                help="Retail: Prices for individual consumers | Wholesale: Prices for bulk purchases"
+            )
+        else:
+            st.error(f"No price data available for {selected_food} in {selected_market}")
+            st.stop()
+        
+        # Show record count
+        record_count = get_record_count(selected_food, selected_market, selected_pricetype)
+        st.caption(f"📊 {record_count} records available")
     
     # Get data for the selected combination
     sample_data = df[(df['commodity'] == selected_food) & 
                      (df['market'] == selected_market) &
                      (df['pricetype'] == selected_pricetype)]
     
-    if not sample_data.empty:
+    MIN_RECORDS = 5
+    
+    if len(sample_data) >= MIN_RECORDS:
         category = sample_data['category'].iloc[0]
         unit = sample_data['unit'].iloc[0]
         current_price = sample_data['price'].iloc[-1]
         
         st.info(f"💰 Current {selected_pricetype} price of {selected_food} in {selected_market}: **KES {current_price:.2f}**")
+        
+        # Month selection
+        st.subheader("📅 Select Future Date")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            future_year = st.number_input("Year", min_value=2024, max_value=2027, value=2025)
+        with col2:
+            future_month = st.selectbox("Month", range(1, 13), index=datetime.now().month - 1)
+        
+        if st.button("🔮 Generate Prediction", type="primary"):
+            with st.spinner("Random Forest model analyzing data..."):
+                predicted_price = predict_price(
+                    selected_food, selected_market, category, selected_pricetype, unit,
+                    future_year, future_month
+                )
+                
+                price_change = predicted_price - current_price
+                price_change_pct = (price_change / current_price) * 100
+                
+                st.markdown("---")
+                st.subheader("🎯 Prediction Results")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("💰 Current Price", f"KES {current_price:.2f}")
+                with col2:
+                    st.metric(f"🔮 Predicted ({future_month}/{future_year})", f"KES {predicted_price:.2f}", 
+                             delta=f"{price_change_pct:.1f}%")
+                with col3:
+                    trend = "Increasing 📈" if price_change > 0 else "Decreasing 📉" if price_change < 0 else "Stable ➡️"
+                    st.metric("📊 Trend", trend)
+                
+                # Recommendation
+                if price_change_pct > 10:
+                    st.warning(f"⚠️ **BUY NOW!** {selected_pricetype} prices expected to increase by {price_change_pct:.1f}%")
+                elif price_change_pct < -10:
+                    st.success(f"✅ **WAIT TO BUY!** {selected_pricetype} prices expected to decrease by {abs(price_change_pct):.1f}%")
+                else:
+                    st.info(f"➡️ **STABLE PRICES** expected (change: {price_change_pct:.1f}%)")
     else:
-        st.warning(f"No data available for this combination. Try a different market or price type.")
-        st.stop()
-    
-    # Month selection
-    st.subheader("📅 Select Future Date")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        future_year = st.number_input("Year", min_value=2024, max_value=2027, value=2025)
-    with col2:
-        future_month = st.selectbox("Month", range(1, 13), index=datetime.now().month - 1)
-    
-    if st.button("🔮 Generate Prediction", type="primary"):
-        with st.spinner("Random Forest model analyzing data..."):
-            predicted_price = predict_price(
-                selected_food, selected_market, category, selected_pricetype, unit,
-                future_year, future_month
-            )
-            
-            price_change = predicted_price - current_price
-            price_change_pct = (price_change / current_price) * 100
-            
-            st.markdown("---")
-            st.subheader("🎯 Prediction Results")
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("💰 Current Price", f"KES {current_price:.2f}")
-            with col2:
-                st.metric(f"🔮 Predicted ({future_month}/{future_year})", f"KES {predicted_price:.2f}", 
-                         delta=f"{price_change_pct:.1f}%")
-            with col3:
-                trend = "Increasing 📈" if price_change > 0 else "Decreasing 📉" if price_change < 0 else "Stable ➡️"
-                st.metric("📊 Trend", trend)
-            
-            # Recommendation
-            if price_change_pct > 10:
-                st.warning(f"⚠️ **BUY NOW!** {selected_pricetype} prices expected to increase by {price_change_pct:.1f}%")
-            elif price_change_pct < -10:
-                st.success(f"✅ **WAIT TO BUY!** {selected_pricetype} prices expected to decrease by {abs(price_change_pct):.1f}%")
-            else:
-                st.info(f"➡️ **STABLE PRICES** expected (change: {price_change_pct:.1f}%)")
-
-# Footer
-st.markdown("---")
-st.caption("© 2026 Food Price Predictor | Powered by Random Forest Machine Learning | Data Source: WFP Food Prices Kenya")
-st.caption("💡 Tip: Use the price type selector to switch between Retail and Wholesale prices")
+        # Show helpful message with alternatives
+        st.markdown(f"""
+        <div class="warning-card">
+            <h3>⚠️ Insufficient Data</h3>
+            <p>Only <strong>{len(sample_data)}</strong> records available for <strong>{selected_food}</strong> in <strong>{selected_market}</strong> with <strong>{selected_pricetype}</strong> price type.</p>
+            <p>Need at least <strong>{MIN_RECORDS}</strong> records to make reliable predictions.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Show available alternatives
+        st.markdown("### 💡 Try These Alternatives:")
+        
+        # Check other price types for same food-market
+        other_price_types = [pt for pt in available_price_types if pt != selected_pricetype]
+        if other_price_types:
+            st.markdown("**Other price types for this food and market:**")
+            for pt in other_price_types:
+                pt_count = get_record_count(selected_food, selected_market, pt)
+                if pt_count >= MIN_RECORDS:
+                    st.markdown(f"- **{pt}**: {pt_count} records available ✅")
+                else:
+                    st.markdown(f"- **{pt}**: {pt_count} records available (insufficient)")
+        
+        # Show other markets for this food
+        st.markdown("**Other markets that sell this food:**")
+        for market, count in food_markets.get(selected_food, [])[:5]:
+            if market != selected_market:
+                for pt in available_price_types:
+                    pt_count = get_record_count(selected_food, market, pt)
+                    if pt_count >= MIN_RECORDS:
+                        st.markdown(f"- **{market
