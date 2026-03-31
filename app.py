@@ -68,6 +68,13 @@ st.markdown("""
         color: white;
         margin-bottom: 1rem;
     }
+    
+    .price-type-selector {
+        background: #f0f2f6;
+        padding: 0.8rem;
+        border-radius: 10px;
+        margin: 0.5rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -298,7 +305,7 @@ if page == "🏠 Home":
         - **ML-powered price predictions** trained on historical WFP data
         - **Smart buying recommendations** (Buy Now / Wait to Buy / Stable)
         - **Historical trend visualization** with future forecasts
-        - **Support for both Retail and Wholesale prices**
+        - **Support for both Retail and Wholesale prices** - choose your preferred price type
         - **Budget planning tools** to maximize purchasing power
         """)
         
@@ -317,6 +324,13 @@ if page == "🏠 Home":
         st.metric("Food Items", len(df['commodity'].unique()))
         st.metric("Markets", len(df['market'].unique()))
         st.metric("Date Range", f"{df['date'].min().year} - {df['date'].max().year}")
+        
+        # Show price type distribution
+        st.markdown("---")
+        st.markdown("### 💰 Price Types Available")
+        price_type_counts = df['pricetype'].value_counts()
+        for pt, count in price_type_counts.items():
+            st.write(f"- **{pt}:** {count} records")
         st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
@@ -335,12 +349,11 @@ elif page == "📈 Price Trends & Predictions":
     st.title("📈 Price Trends & Predictions")
     st.markdown("---")
     
-    # Item selection
-    foods = sorted(df['commodity'].unique())
-    
-    col1, col2 = st.columns(2)
+    # Selection columns
+    col1, col2, col3 = st.columns(3)
     
     with col1:
+        foods = sorted(df['commodity'].unique())
         selected_food = st.selectbox("🍲 Select Food Item", foods)
     
     with col2:
@@ -352,9 +365,15 @@ elif page == "📈 Price Trends & Predictions":
             st.error(f"No markets found that sell {selected_food}")
             st.stop()
     
-    # Price type selection (Retail or Wholesale)
-    price_types = df['pricetype'].unique()
-    selected_pricetype = st.selectbox("💰 Price Type", sorted(price_types))
+    with col3:
+        # Price type selection - clearly visible
+        price_types = sorted(df['pricetype'].unique())
+        selected_pricetype = st.selectbox(
+            "💰 Select Price Type",
+            price_types,
+            help="Retail: Prices for individual consumers | Wholesale: Prices for bulk purchases"
+        )
+        st.caption(f"Showing {selected_pricetype} prices")
     
     # Get historical data with selected price type
     historical_df = df[(df['commodity'] == selected_food) & 
@@ -397,7 +416,7 @@ elif page == "📈 Price Trends & Predictions":
             x=historical_df['date'],
             y=historical_df['price'],
             mode='lines+markers',
-            name=f'Historical Prices ({selected_pricetype})',
+            name=f'Historical {selected_pricetype} Prices',
             line=dict(color='#1f77b4', width=2),
             marker=dict(size=4, color='#1f77b4')
         ))
@@ -413,7 +432,7 @@ elif page == "📈 Price Trends & Predictions":
         ))
         
         fig.update_layout(
-            title=f'{selected_food} - Price History and Forecast (Market: {selected_market}, {selected_pricetype})',
+            title=f'{selected_food} - Price History and Forecast<br>Market: {selected_market} | Price Type: {selected_pricetype}',
             xaxis_title='Date',
             yaxis_title='Price (KES)',
             hovermode='x unified',
@@ -455,7 +474,7 @@ elif page == "📈 Price Trends & Predictions":
         <div class="rec-card {rec['badge_class']}">
             <h3>{rec['icon']} {rec['action']}</h3>
             <p>{rec['message']}</p>
-            <p><small>Current: KES {current_price:.2f} → Next Month: KES {next_month_pred:.2f}</small></p>
+            <p><small>Current {selected_pricetype} price: KES {current_price:.2f} → Next Month: KES {next_month_pred:.2f}</small></p>
         </div>
         """, unsafe_allow_html=True)
     else:
@@ -468,20 +487,29 @@ elif page == "💡 Shopping Recommendations":
     st.title("💡 Smart Shopping Recommendations")
     st.markdown("---")
     
-    # Market selection
-    markets = sorted(df['market'].unique())
-    selected_market = st.selectbox("🏪 Select Market", markets)
+    # Selection columns
+    col1, col2 = st.columns(2)
     
-    # Price type selection
-    price_types = df['pricetype'].unique()
-    selected_pricetype = st.selectbox("💰 Price Type", sorted(price_types))
+    with col1:
+        markets = sorted(df['market'].unique())
+        selected_market = st.selectbox("🏪 Select Market", markets)
+    
+    with col2:
+        # Price type selection - clearly visible
+        price_types = sorted(df['pricetype'].unique())
+        selected_pricetype = st.selectbox(
+            "💰 Select Price Type",
+            price_types,
+            help="Retail: Prices for individual consumers | Wholesale: Prices for bulk purchases"
+        )
+        st.caption(f"Showing {selected_pricetype} prices")
     
     # Get all foods in this market with selected price type
     market_data = df[(df['market'] == selected_market) & (df['pricetype'] == selected_pricetype)]
     foods_in_market = market_data['commodity'].value_counts().head(20).index.tolist()
     
     if foods_in_market:
-        st.subheader(f"📊 Recommendations for {selected_market} ({selected_pricetype})")
+        st.subheader(f"📊 Recommendations for {selected_market} ({selected_pricetype} Prices)")
         
         recommendations = []
         total_savings = 0
@@ -532,7 +560,7 @@ elif page == "💡 Shopping Recommendations":
             <div class="metric-card" style="background: #2ecc71; color: white; margin-bottom: 1.5rem;">
                 <h2>💰 Total Potential Savings</h2>
                 <h1>KES {total_savings:.2f}</h1>
-                <p>If you follow "WAIT TO BUY" recommendations</p>
+                <p>If you follow "WAIT TO BUY" recommendations for {selected_pricetype} prices</p>
             </div>
             """, unsafe_allow_html=True)
             
@@ -541,12 +569,12 @@ elif page == "💡 Shopping Recommendations":
                 st.markdown(f"""
                 <div class="rec-card {rec['badge_class']}">
                     <h3>🍲 {rec['food']}</h3>
-                    <p><strong>Current:</strong> KES {rec['current_price']:.2f} → <strong>Predicted (next month):</strong> KES {rec['predicted_price']:.2f}</p>
+                    <p><strong>Current {selected_pricetype} price:</strong> KES {rec['current_price']:.2f} → <strong>Predicted (next month):</strong> KES {rec['predicted_price']:.2f}</p>
                     <p>{rec['message']}</p>
                 </div>
                 """, unsafe_allow_html=True)
         else:
-            st.info("Not enough data to generate recommendations for this market.")
+            st.info("Not enough data to generate recommendations for this market and price type.")
     else:
         st.warning(f"No foods found in {selected_market} with {selected_pricetype} price type.")
 
@@ -563,8 +591,14 @@ elif page == "📊 Market Analysis":
         selected_food = st.selectbox("🍲 Select Food", sorted(df['commodity'].unique()))
     
     with col2:
-        price_types = df['pricetype'].unique()
-        selected_pricetype = st.selectbox("💰 Price Type", sorted(price_types))
+        # Price type selection - clearly visible
+        price_types = sorted(df['pricetype'].unique())
+        selected_pricetype = st.selectbox(
+            "💰 Select Price Type",
+            price_types,
+            help="Retail: Prices for individual consumers | Wholesale: Prices for bulk purchases"
+        )
+        st.caption(f"Comparing {selected_pricetype} prices across markets")
     
     # Filter data
     food_data = df[(df['commodity'] == selected_food) & (df['pricetype'] == selected_pricetype)]
@@ -574,8 +608,8 @@ elif page == "📊 Market Analysis":
         market_avg = food_data.groupby('market')['price'].mean().sort_values()
         
         fig = px.bar(x=market_avg.values, y=market_avg.index, orientation='h',
-                     title=f'Average Price of {selected_food} Across Markets ({selected_pricetype})',
-                     labels={'x': 'Average Price (KES)', 'y': 'Market'})
+                     title=f'Average {selected_pricetype} Price of {selected_food} Across Markets',
+                     labels={'x': f'Average {selected_pricetype} Price (KES)', 'y': 'Market'})
         fig.update_layout(height=400)
         st.plotly_chart(fig, use_container_width=True)
         
@@ -591,7 +625,7 @@ elif page == "📊 Market Analysis":
         comparison_df = food_data[food_data['market'].isin(top_markets)]
         
         fig2 = px.line(comparison_df, x='date', y='price', color='market',
-                       title=f'Price Trends for {selected_food} - Market Comparison ({selected_pricetype})')
+                       title=f'{selected_pricetype} Price Trends for {selected_food} - Market Comparison')
         fig2.update_layout(height=400)
         st.plotly_chart(fig2, use_container_width=True)
     else:
@@ -604,7 +638,7 @@ elif page == "🔮 Price Predictor":
     st.title("🔮 Future Price Predictor")
     st.markdown("---")
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         selected_food = st.selectbox("🍲 Select Food", sorted(df['commodity'].unique()), key="predict_food")
@@ -615,9 +649,16 @@ elif page == "🔮 Price Predictor":
             market_options = [m[0] for m in markets_for_food]
             selected_market = st.selectbox("🏪 Select Market", market_options, key="predict_market")
     
-    # Price type selection
-    price_types = df['pricetype'].unique()
-    selected_pricetype = st.selectbox("💰 Price Type", sorted(price_types), key="predict_pricetype")
+    with col3:
+        # Price type selection - clearly visible
+        price_types = sorted(df['pricetype'].unique())
+        selected_pricetype = st.selectbox(
+            "💰 Select Price Type",
+            price_types,
+            key="predict_pricetype",
+            help="Retail: Prices for individual consumers | Wholesale: Prices for bulk purchases"
+        )
+        st.caption(f"Predicting {selected_pricetype} prices")
     
     # Get data for the selected combination
     sample_data = df[(df['commodity'] == selected_food) & 
@@ -629,7 +670,7 @@ elif page == "🔮 Price Predictor":
         unit = sample_data['unit'].iloc[0]
         current_price = sample_data['price'].iloc[-1]
         
-        st.info(f"Current price of {selected_food} in {selected_market} ({selected_pricetype}): **KES {current_price:.2f}**")
+        st.info(f"💰 Current {selected_pricetype} price of {selected_food} in {selected_market}: **KES {current_price:.2f}**")
     else:
         st.warning(f"No data available for this combination. Try a different market or price type.")
         st.stop()
@@ -668,12 +709,13 @@ elif page == "🔮 Price Predictor":
             
             # Recommendation
             if price_change_pct > 10:
-                st.warning(f"⚠️ **BUY NOW!** Prices expected to increase by {price_change_pct:.1f}%")
+                st.warning(f"⚠️ **BUY NOW!** {selected_pricetype} prices expected to increase by {price_change_pct:.1f}%")
             elif price_change_pct < -10:
-                st.success(f"✅ **WAIT TO BUY!** Prices expected to decrease by {abs(price_change_pct):.1f}%")
+                st.success(f"✅ **WAIT TO BUY!** {selected_pricetype} prices expected to decrease by {abs(price_change_pct):.1f}%")
             else:
                 st.info(f"➡️ **STABLE PRICES** expected (change: {price_change_pct:.1f}%)")
 
 # Footer
 st.markdown("---")
 st.caption("© 2026 Food Price Predictor | Powered by Random Forest Machine Learning | Data Source: WFP Food Prices Kenya")
+st.caption("💡 Tip: Use the price type selector to switch between Retail and Wholesale prices")
