@@ -1,4 +1,4 @@
-# app.py - Enhanced with YOUR Random Forest Model
+# app.py - Enhanced with Random Forest Model (Retail & Wholesale Support)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -115,13 +115,13 @@ def load_data():
             st.error("❌ Data file not found! Please upload wfp_food_prices_ken.csv")
             return None
         
-        # Data preprocessing (same as in your Colab notebook)
+        # Data preprocessing
         df['date'] = pd.to_datetime(df['date'])
         df = df.dropna(subset=['price'])
         df['year'] = df['date'].dt.year
         df['month'] = df['date'].dt.month
         
-        # Drop unnecessary columns (same as in Colab)
+        # Drop unnecessary columns
         df = df.drop(['latitude', 'longitude', 'usdprice', 'priceflag', 'admin2', 'currency'], 
                      axis=1, errors='ignore')
         
@@ -166,13 +166,13 @@ market_foods = get_market_foods()
 food_markets = get_food_markets()
 
 # ============================================
-# TRAIN RANDOM FOREST MODEL (from your Colab code)
+# TRAIN RANDOM FOREST MODEL
 # ============================================
 @st.cache_resource
 def train_model():
     """Train Random Forest model using same approach as Colab notebook"""
     
-    # Prepare features (same as in Colab)
+    # Prepare features
     features = ['commodity', 'category', 'market', 'pricetype', 'unit', 'year', 'month']
     X = df[features].copy()
     y = df['price']
@@ -187,7 +187,7 @@ def train_model():
     from sklearn.ensemble import RandomForestRegressor
     
     model = RandomForestRegressor(
-        n_estimators=100,  # Increased from 50 for better accuracy
+        n_estimators=100,
         random_state=42,
         max_depth=15,
         min_samples_split=5,
@@ -217,11 +217,11 @@ def predict_price(commodity, market, category, pricetype, unit, year, month):
         'month': [month]
     })
     
-    # Create dummy variables (same as training)
+    # Create dummy variables
     categorical_features = ['commodity', 'category', 'market', 'pricetype', 'unit']
     input_encoded = pd.get_dummies(input_data, columns=categorical_features, drop_first=True)
     
-    # Align columns with training data (add missing columns, fill with 0)
+    # Align columns with training data
     for col in feature_columns:
         if col not in input_encoded.columns:
             input_encoded[col] = 0
@@ -298,6 +298,7 @@ if page == "🏠 Home":
         - **ML-powered price predictions** trained on historical WFP data
         - **Smart buying recommendations** (Buy Now / Wait to Buy / Stable)
         - **Historical trend visualization** with future forecasts
+        - **Support for both Retail and Wholesale prices**
         - **Budget planning tools** to maximize purchasing power
         """)
         
@@ -351,8 +352,14 @@ elif page == "📈 Price Trends & Predictions":
             st.error(f"No markets found that sell {selected_food}")
             st.stop()
     
-    # Get historical data
-    historical_df = df[(df['commodity'] == selected_food) & (df['market'] == selected_market)].copy()
+    # Price type selection (Retail or Wholesale)
+    price_types = df['pricetype'].unique()
+    selected_pricetype = st.selectbox("💰 Price Type", sorted(price_types))
+    
+    # Get historical data with selected price type
+    historical_df = df[(df['commodity'] == selected_food) & 
+                       (df['market'] == selected_market) &
+                       (df['pricetype'] == selected_pricetype)].copy()
     historical_df = historical_df.sort_values('date')
     
     if len(historical_df) >= 5:
@@ -374,7 +381,7 @@ elif page == "📈 Price Trends & Predictions":
                 pred_year += 1
             
             pred_price = predict_price(
-                selected_food, selected_market, category, 'Retail', unit,
+                selected_food, selected_market, category, selected_pricetype, unit,
                 pred_year, pred_month
             )
             pred_date = current_date + timedelta(days=30*i)
@@ -390,7 +397,7 @@ elif page == "📈 Price Trends & Predictions":
             x=historical_df['date'],
             y=historical_df['price'],
             mode='lines+markers',
-            name='Historical Prices',
+            name=f'Historical Prices ({selected_pricetype})',
             line=dict(color='#1f77b4', width=2),
             marker=dict(size=4, color='#1f77b4')
         ))
@@ -406,7 +413,7 @@ elif page == "📈 Price Trends & Predictions":
         ))
         
         fig.update_layout(
-            title=f'{selected_food} - Price History and Forecast (Market: {selected_market})',
+            title=f'{selected_food} - Price History and Forecast (Market: {selected_market}, {selected_pricetype})',
             xaxis_title='Date',
             yaxis_title='Price (KES)',
             hovermode='x unified',
@@ -452,7 +459,7 @@ elif page == "📈 Price Trends & Predictions":
         </div>
         """, unsafe_allow_html=True)
     else:
-        st.warning(f"Insufficient data for {selected_food} in {selected_market}. Need at least 5 records.")
+        st.warning(f"Insufficient data for {selected_food} in {selected_market} with {selected_pricetype} price type. Need at least 5 records.")
 
 # ============================================
 # SHOPPING RECOMMENDATIONS PAGE
@@ -465,18 +472,25 @@ elif page == "💡 Shopping Recommendations":
     markets = sorted(df['market'].unique())
     selected_market = st.selectbox("🏪 Select Market", markets)
     
-    # Get all foods in this market
-    foods_in_market = market_foods.get(selected_market, [])
+    # Price type selection
+    price_types = df['pricetype'].unique()
+    selected_pricetype = st.selectbox("💰 Price Type", sorted(price_types))
+    
+    # Get all foods in this market with selected price type
+    market_data = df[(df['market'] == selected_market) & (df['pricetype'] == selected_pricetype)]
+    foods_in_market = market_data['commodity'].value_counts().head(20).index.tolist()
     
     if foods_in_market:
-        st.subheader(f"📊 Recommendations for {selected_market}")
+        st.subheader(f"📊 Recommendations for {selected_market} ({selected_pricetype})")
         
         recommendations = []
         total_savings = 0
         
         # Analyze top foods
-        for food, count in foods_in_market[:15]:
-            historical_df = df[(df['commodity'] == food) & (df['market'] == selected_market)].copy()
+        for food in foods_in_market[:15]:
+            historical_df = df[(df['commodity'] == food) & 
+                               (df['market'] == selected_market) &
+                               (df['pricetype'] == selected_pricetype)].copy()
             
             if len(historical_df) >= 5:
                 current_price = historical_df['price'].iloc[-1]
@@ -494,7 +508,7 @@ elif page == "💡 Shopping Recommendations":
                     next_year += 1
                 
                 predicted_price = predict_price(
-                    food, selected_market, category, 'Retail', unit,
+                    food, selected_market, category, selected_pricetype, unit,
                     next_year, next_month
                 )
                 
@@ -534,7 +548,7 @@ elif page == "💡 Shopping Recommendations":
         else:
             st.info("Not enough data to generate recommendations for this market.")
     else:
-        st.warning("No foods found in this market.")
+        st.warning(f"No foods found in {selected_market} with {selected_pricetype} price type.")
 
 # ============================================
 # MARKET ANALYSIS PAGE
@@ -548,15 +562,19 @@ elif page == "📊 Market Analysis":
     with col1:
         selected_food = st.selectbox("🍲 Select Food", sorted(df['commodity'].unique()))
     
-    # Compare across markets
-    food_data = df[df['commodity'] == selected_food]
+    with col2:
+        price_types = df['pricetype'].unique()
+        selected_pricetype = st.selectbox("💰 Price Type", sorted(price_types))
+    
+    # Filter data
+    food_data = df[(df['commodity'] == selected_food) & (df['pricetype'] == selected_pricetype)]
     
     if not food_data.empty:
         # Market comparison chart
         market_avg = food_data.groupby('market')['price'].mean().sort_values()
         
         fig = px.bar(x=market_avg.values, y=market_avg.index, orientation='h',
-                     title=f'Average Price of {selected_food} Across Markets',
+                     title=f'Average Price of {selected_food} Across Markets ({selected_pricetype})',
                      labels={'x': 'Average Price (KES)', 'y': 'Market'})
         fig.update_layout(height=400)
         st.plotly_chart(fig, use_container_width=True)
@@ -564,7 +582,7 @@ elif page == "📊 Market Analysis":
         # Find cheapest market
         cheapest_market = market_avg.idxmin()
         cheapest_price = market_avg.min()
-        st.success(f"💡 **Best Deal:** {selected_food} is cheapest at **{cheapest_market}** (KES {cheapest_price:.2f})")
+        st.success(f"💡 **Best Deal:** {selected_food} is cheapest at **{cheapest_market}** (KES {cheapest_price:.2f}) for {selected_pricetype} price")
         
         # Time series comparison for top markets
         st.subheader("📈 Price Trends Comparison")
@@ -573,9 +591,11 @@ elif page == "📊 Market Analysis":
         comparison_df = food_data[food_data['market'].isin(top_markets)]
         
         fig2 = px.line(comparison_df, x='date', y='price', color='market',
-                       title=f'Price Trends for {selected_food} - Market Comparison')
+                       title=f'Price Trends for {selected_food} - Market Comparison ({selected_pricetype})')
         fig2.update_layout(height=400)
         st.plotly_chart(fig2, use_container_width=True)
+    else:
+        st.warning(f"No data available for {selected_food} with {selected_pricetype} price type.")
 
 # ============================================
 # PRICE PREDICTOR PAGE
@@ -595,16 +615,23 @@ elif page == "🔮 Price Predictor":
             market_options = [m[0] for m in markets_for_food]
             selected_market = st.selectbox("🏪 Select Market", market_options, key="predict_market")
     
-    # Get category and unit for the selected food
-    sample_data = df[(df['commodity'] == selected_food) & (df['market'] == selected_market)]
+    # Price type selection
+    price_types = df['pricetype'].unique()
+    selected_pricetype = st.selectbox("💰 Price Type", sorted(price_types), key="predict_pricetype")
+    
+    # Get data for the selected combination
+    sample_data = df[(df['commodity'] == selected_food) & 
+                     (df['market'] == selected_market) &
+                     (df['pricetype'] == selected_pricetype)]
+    
     if not sample_data.empty:
         category = sample_data['category'].iloc[0]
         unit = sample_data['unit'].iloc[0]
         current_price = sample_data['price'].iloc[-1]
         
-        st.info(f"Current price of {selected_food} in {selected_market}: **KES {current_price:.2f}**")
+        st.info(f"Current price of {selected_food} in {selected_market} ({selected_pricetype}): **KES {current_price:.2f}**")
     else:
-        st.warning("No data available for this combination")
+        st.warning(f"No data available for this combination. Try a different market or price type.")
         st.stop()
     
     # Month selection
@@ -619,7 +646,7 @@ elif page == "🔮 Price Predictor":
     if st.button("🔮 Generate Prediction", type="primary"):
         with st.spinner("Random Forest model analyzing data..."):
             predicted_price = predict_price(
-                selected_food, selected_market, category, 'Retail', unit,
+                selected_food, selected_market, category, selected_pricetype, unit,
                 future_year, future_month
             )
             
