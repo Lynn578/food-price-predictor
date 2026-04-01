@@ -87,7 +87,7 @@ with st.sidebar:
     st.markdown("""
     This app uses **Random Forest Machine Learning** to predict grocery price fluctuations.
     
-    **Model Accuracy:** R² Score ~0.85
+    **Model Accuracy:** R² Score ~0.96
     **Features Used:** Commodity, Market, Category, Price Type, Unit, Year, Month
     """)
     st.markdown("---")
