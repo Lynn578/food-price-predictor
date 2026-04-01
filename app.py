@@ -306,7 +306,7 @@ if page == "🏠 Home":
         - **Algorithm:** Random Forest Regressor
         - **Features:** Commodity, Market, Category, Price Type, Unit, Year, Month
         - **Training Data:** WFP Food Prices Kenya (10,000+ records)
-        - **Accuracy:** R² Score ~0.85
+        - **Accuracy:** R² Score ~0.96
         """)
     
     with col2:
