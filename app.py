@@ -14,7 +14,7 @@ st.set_page_config(
     page_title="Food Price Predictor - Kenya", 
     page_icon="🍽️", 
     layout="wide",
-    color: white;
+    
 )
 
 # ============================================
